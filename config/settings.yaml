@@ -1,0 +1,135 @@
+# Agent Configuration
+environment: development  # Can be 'development' or 'production'
+
+# Review Settings
+review_timeout: 300  # seconds
+max_files: 100
+concurrent_reviews: 5
+polling_interval: 60
+error_retry_interval: 300
+
+# Rules Configuration
+rules:
+  security:
+    sql_injection_patterns:
+      - "execute\\s*\\(\\s*[\"'].*?\\%.*?[\"']"
+      - "raw_connection\\s*\\(\\s*[\"'].*?[\"']"
+    secret_patterns:
+      api_key: "api[_-]?key.*?['\"]([a-zA-Z0-9]{16,})['\"]"
+      password: "password.*?['\"]([^'\"]{8,})['\"]"
+      token: "token.*?['\"]([a-zA-Z0-9_-]{8,})['\"]"
+    insecure_configs:
+      debug_mode:
+        pattern: "debug\\s*=\\s*True"
+        message: "Debug mode enabled in configuration"
+      cors_all:
+        pattern: "cors_allow_all\\s*=\\s*True|[\"']\\*[\"']"
+        message: "Overly permissive CORS configuration"
+
+  architecture:
+    layer_violations:
+      - name: "no_db_in_controller"
+        pattern: "repository\\.|EntityManager\\."
+        scope: "*/controller/*"
+        message: "Direct database access in controller layer"
+      - name: "no_view_in_service"
+        pattern: "render|redirect"
+        scope: "*/service/*"
+        message: "View logic in service layer"
+    
+    dependency_rules:
+      - name: "no_circular_deps"
+        pattern: "import.*\\.\\."
+        message: "Avoid parent directory imports"
+      - name: "no_cross_module_deps"
+        pattern: "from ..* import"
+        scope: "*/core/*"
+        message: "Core modules should not depend on feature modules"
+
+    pattern_violations:
+      - name: "use_dependency_injection"
+        pattern: "new\\s+[A-Z][a-zA-Z0-9]*\\("
+        message: "Use dependency injection instead of direct instantiation"
+      - name: "no_static_utils"
+        pattern: "@staticmethod"
+        message: "Prefer instance methods over static utilities"
+
+  coding_standards:
+    max_method_length: 50
+    max_nesting_depth: 4
+    naming_conventions:
+      class: "^[A-Z][a-zA-Z0-9]*$"
+      method: "^[a-z][a-zA-Z0-9]*$"
+      variable: "^[a-z][a-zA-Z0-9]*$"
+      constant: "^[A-Z][A-Z0-9_]*$"
+    
+    complexity_rules:
+      max_cognitive_complexity: 15
+      max_cyclomatic_complexity: 10
+      max_parameters: 5
+
+# Logging Configuration
+logging:
+  level: INFO
+  file: logs/agent.log
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  max_size: 10MB
+  backup_count: 5
+
+# MCP Configuration
+mcp:
+  endpoint: ${MCP_ENDPOINT}
+  token: ${MCP_TOKEN}
+  batch_size: 10
+  timeout: 30
+  retry:
+    max_attempts: 3
+    initial_delay: 1
+    max_delay: 10
+
+# Analysis Configuration
+analysis:
+  severity_levels:
+    error: "Must be fixed before merge"
+    warning: "Should be addressed"
+    info: "Consider improving"
+    suggestion: "Optional enhancement"
+  
+  prioritization:
+    security: 1
+    architecture: 2
+    style: 3
+    
+  ignore_patterns:
+    - "*/test/*"
+    - "*/generated/*"
+    - "*/migrations/*"
+    - "*/vendor/*"
+
+# Performance Settings
+performance:
+  cache:
+    enabled: true
+    ttl: 3600
+    max_size: 1000
+  
+  rate_limiting:
+    enabled: true
+    max_requests: 100
+    window_seconds: 60
+
+# Integration Settings
+integrations:
+  github:
+    webhook_events:
+      - pull_request
+      - pull_request_review
+    required_status_checks:
+      - "pr-review"
+      - "security-scan"
+    
+  azure_openai:
+    deployment: ${AZURE_OPENAI_DEPLOYMENT}
+    temperature: 0.3
+    max_tokens: 2000
+    timeout: 30
