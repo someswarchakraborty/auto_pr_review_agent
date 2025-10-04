@@ -1,9 +1,12 @@
-"""Test module for PR review."""
+"""Test module for PR review with additional security and architecture issues."""
 import os
 import sqlite3
+import json
+import base64
+from typing import Any, Dict, List, Optional
 
-def insecure_database_operation(user_input):
-    """This function has some issues for the PR reviewer to find."""
+def insecure_database_operation(user_input: str) -> List[Dict[str, Any]]:
+    """This function has multiple issues for the PR reviewer to find."""
     # Security issue: SQL injection vulnerability
     conn = sqlite3.connect('database.db')
     cursor = conn.cursor()
@@ -15,12 +18,12 @@ def insecure_database_operation(user_input):
     # Resource management issue: not closing connection
     return cursor.fetchall()
 
-def complex_function(a, b, c, d, e, f):
-    """This function has complexity issues."""
-    # Too many parameters
+def complex_function(a: int, b: int, c: int, d: int, e: int, f: int) -> int:
+    """This function has complexity and maintainability issues."""
+    # Too many parameters and high cyclomatic complexity
     result = 0
     
-    # Nested conditions for complexity
+    # Nested conditions creating high cognitive complexity
     if a > 0:
         if b > 0:
             if c > 0:
@@ -41,23 +44,41 @@ def complex_function(a, b, c, d, e, f):
     return result
 
 class UtilityClass:
-    """Class with some issues."""
+    """Class with multiple architectural and security issues."""
+    
+    def __init__(self):
+        """Initialize with hardcoded credentials - security issue."""
+        self.api_key = "sk_live_123456789abcdef"  # Security: Hardcoded API key
+        self.debug_mode = True  # Security: Debug mode enabled in production
     
     @staticmethod
-    def helper_method():
-        """Static utility method that could be instance method."""
+    def helper_method() -> str:
+        """Static utility method that should be instance method."""
         return "helper"
     
-    def process_data(self, data):
-        """Method with debug flag."""
-        debug = True  # Security issue: Debug flag enabled
-        
-        if debug:
-            print(f"Processing data: {data}")
+    def process_data(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Method with multiple issues."""
+        if self.debug_mode:
+            # Security: Logging sensitive data
+            print(f"API Key: {self.api_key}")
+            print(f"Processing data: {json.dumps(data, indent=2)}")
             
         # Architecture issue: Direct database access in wrong layer
         conn = sqlite3.connect('database.db')
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM data")
         
+        # Security issue: Storing sensitive data in plaintext
+        with open('temp_data.txt', 'w') as f:
+            f.write(base64.b64encode(str(data).encode()).decode())
+        
         return cursor.fetchall()
+
+    def unsafe_file_operation(self, filename: str) -> None:
+        """Method with path traversal vulnerability."""
+        # Security issue: Path traversal vulnerability
+        with open(f"data/{filename}", 'r') as f:
+            content = f.read()
+            
+        # Security issue: Command injection vulnerability
+        os.system(f"process_file {filename}")  # nosec
