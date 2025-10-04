@@ -18,21 +18,23 @@ The PR Reviewer Agent is an automated code review system that analyzes pull requ
 
 ### Core Features
 - Automated PR review triggering via webhooks
-- Real-time code analysis and feedback
-- Security vulnerability scanning
-- Architecture compliance verification
-- Best practices enforcement
-- Intelligent code improvement suggestions
-- Natural language summary generation
+- Real-time code analysis and feedback using Model Context Protocol (MCP)
+- Security vulnerability scanning with context-aware analysis
+- Architecture compliance verification through MCP models
+- Best practices enforcement with customizable rules
+- Intelligent code improvement suggestions using AI models
+- Natural language summary generation via MCP
 
 ### Advanced Capabilities
-- Multi-repository support
-- Configurable analysis rules
-- Custom review policies
-- Automatic retries and error recovery
-- Webhook signature verification
-- Detailed logging and monitoring
-- Rate limit handling
+- Model Context Protocol (MCP) integration for enhanced AI analysis
+- Multi-repository support with context preservation
+- Configurable analysis rules and model parameters
+- Custom review policies with MCP-based decision making
+- Automatic retries and error recovery with state management
+- Webhook signature verification for security
+- Detailed logging and monitoring with MCP request tracing
+- Rate limit handling for API and model calls
+- Context-aware code analysis using MCP memory system
 
 ## Technical Stack
 
@@ -47,11 +49,42 @@ The PR Reviewer Agent is an automated code review system that analyzes pull requ
 
 ### Key Components
 - FastAPI application server
+- MCP client for context-aware AI analysis
 - Webhook handler with signature verification
-- Async code analysis pipeline
+- Async code analysis pipeline with MCP integration
 - GitHub API integration client
+- Intelligent context management system
 - Configuration management system
-- Logging and monitoring system
+- Logging and monitoring system with MCP tracing
+
+## Model Context Protocol (MCP)
+
+The PR Reviewer Agent leverages the Model Context Protocol (MCP) for enhanced code analysis and review capabilities. MCP provides:
+
+1. **Context-Aware Analysis**
+   - Maintains conversation history across API calls
+   - Preserves code context for better understanding
+   - Enables more accurate and consistent reviews
+
+2. **Intelligent Memory Management**
+   - Automatically manages context window size
+   - Prioritizes relevant information
+   - Optimizes token usage
+
+3. **Advanced AI Features**
+   - Multi-step reasoning for complex code analysis
+   - Pattern recognition across multiple files
+   - Learning from previous reviews
+   - Contextual code suggestions
+
+4. **Integration Benefits**
+   - Improved code understanding
+   - More accurate vulnerability detection
+   - Better architectural analysis
+   - Context-aware suggestions
+   - Consistent review style
+
+For detailed MCP configuration and usage, see the [MCP Integration Guide](docs/mcp_integration.md).
 
 ## Documentation
 
@@ -60,6 +93,7 @@ The PR Reviewer Agent is an automated code review system that analyzes pull requ
 - [Configuration Guide](docs/configuration.md) - Configuration options and settings
 - [Architecture Overview](docs/architecture.md) - System design and components
 - [GitHub Integration](docs/github_integration.md) - GitHub API and webhook integration
+- [MCP Integration Guide](docs/mcp_integration.md) - Model Context Protocol setup and usage
 - [Sequence Diagrams](docs/sequence_diagrams.md) - System interaction flows
 - [Testing Guide](docs/testing.md) - Testing strategy and procedures
 - [Best Practices](docs/best_practices.md) - Development and usage guidelines
@@ -121,17 +155,77 @@ auto_pr_review_agent/
    python src/main.py
    ```
 
+## Azure OpenAI Integration
+
+The PR Reviewer Agent uses Azure OpenAI's powerful language models at several key points in the review process:
+
+### 1. Code Analysis
+- **Security Analysis** (`src/analyzers/security.py`):
+  - Identifies potential security vulnerabilities
+  - Analyzes authentication and authorization patterns
+  - Detects common security anti-patterns
+  - Reviews dependency security
+
+- **Architecture Analysis** (`src/analyzers/architecture.py`):
+  - Evaluates architectural patterns
+  - Checks design principles compliance
+  - Assesses component interactions
+  - Reviews system scalability aspects
+
+- **Code Style Analysis** (`src/analyzers/code_style.py`):
+  - Reviews code formatting and style
+  - Checks naming conventions
+  - Evaluates code organization
+  - Assesses code readability
+
+### 2. Natural Language Processing
+- **Review Summary Generation**:
+  - Creates concise PR summaries
+  - Highlights key changes
+  - Identifies impact areas
+  - Provides overall assessment
+
+- **Documentation Analysis**:
+  - Reviews documentation completeness
+  - Checks API documentation
+  - Validates code comments
+  - Assesses technical writing quality
+
+### 3. Smart Feedback Generation
+- **Context-Aware Suggestions**:
+  - Provides specific improvement recommendations
+  - Suggests code optimizations
+  - Offers alternative implementations
+  - Explains the reasoning behind suggestions
+
+### 4. Test Coverage Analysis
+- **Test Quality Assessment**:
+  - Evaluates test coverage
+  - Reviews test patterns
+  - Suggests missing test cases
+  - Assesses edge case handling
+
+### Azure OpenAI Model Usage
+- Uses `gpt-4` or `gpt-35-turbo` based on configuration
+- Implements intelligent context management
+- Handles rate limiting and retries
+- Optimizes token usage for cost efficiency
+
+The integration is handled through the Azure OpenAI REST API, with configurations managed in `config/settings.yaml` and environment variables.
+
 ## Environment Variables
 
 The following environment variables are required:
 
 - `GITHUB_TOKEN` - GitHub Personal Access Token
-- `OPENAI_API_KEY` - Azure OpenAI API Key
-- `OPENAI_API_BASE` - Azure OpenAI API Base URL
+- `AZURE_OPENAI_API_KEY` - Azure OpenAI API Key
+- `AZURE_OPENAI_ENDPOINT` - Azure OpenAI API Base URL
+- `AZURE_OPENAI_CHAT_DEPLOYMENT_NAME` - Azure OpenAI gpt model deployment version
+- `AZURE_OPENAI_API_VERSION` - Azure OpenAI API version
 - `WEBHOOK_SECRET` - GitHub webhook secret for verification
 - `NGROK_TOKEN` - (Optional) ngrok authentication token for local development
+-  For GitHub MCP we do need any separate MCP env variable or configuration
 
-See `example.env` for a complete list of configuration options.
 
 ## Setup Instructions
 
