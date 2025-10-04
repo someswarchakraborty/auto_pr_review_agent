@@ -56,52 +56,98 @@ async def health_check():
 @app.post("/webhook")
 async def github_webhook(request: Request):
     """Handle GitHub webhook events."""
-    body = await request.body()
-    
-    # Verify webhook signature if secret is configured
-    if (config.integrations and config.integrations.github and 
-        config.integrations.github.webhook_secret):
-        signature = request.headers.get("X-Hub-Signature-256")
-        if not signature:
-            raise HTTPException(status_code=400, detail="No signature provided")
+    try:
+        # Log incoming webhook request
+        logger.info(f"Received webhook request from {request.client.host}")
+        logger.debug(f"Headers: {dict(request.headers)}")
         
-        # Verify webhook secret
-        secret = config.integrations.github.webhook_secret.encode()
-        expected_signature = "sha256=" + hmac.new(
-            secret,
-            msg=body,
-            digestmod=hashlib.sha256
-        ).hexdigest()
+        body = await request.body()
+        event_type = request.headers.get("X-GitHub-Event")
+        delivery_id = request.headers.get("X-GitHub-Delivery", "unknown")
         
-        if not hmac.compare_digest(signature, expected_signature):
-            raise HTTPException(status_code=401, detail="Invalid signature")
-    else:
-        logger.warning("Webhook secret not configured - skipping signature verification")
-    
-    # Process the webhook event
-    event_type = request.headers.get("X-GitHub-Event")
-    
-    # Check if this is an event type we're monitoring
-    event_types = (config.integrations.github.webhook_events 
-                  if config.integrations and config.integrations.github 
-                  else ["pull_request", "pull_request_review"])
-                  
-    if event_type not in event_types:
-        logger.info(f"Ignoring unhandled event type: {event_type}")
-        return {"status": "ignored"}
-    
-    # Parse and handle the event
-    event_data = json.loads(body)
-    
-    # Check if this repository is being monitored
-    if 'repository' in event_data:
-        repo_full_name = event_data['repository']['full_name']
-        if repo_full_name not in config.repository_list:
-            logger.info(f"Ignoring event from unmonitored repository: {repo_full_name}")
-            return {"status": "ignored"}
-    
-    await agent.handle_github_event(event_type, event_data)
-    return {"status": "processing"}
+        logger.info(f"Processing GitHub webhook event: {event_type} (ID: {delivery_id})")
+        
+        # Verify webhook signature if secret is configured
+        if (config.integrations and config.integrations.github and 
+            config.integrations.github.webhook_secret):
+            signature = request.headers.get("X-Hub-Signature-256")
+            if not signature:
+                logger.error(f"No signature provided for event {delivery_id}")
+                raise HTTPException(status_code=400, detail="No signature provided")
+            
+            # Verify webhook secret
+            secret = config.integrations.github.webhook_secret.encode()
+            expected_signature = "sha256=" + hmac.new(
+                secret,
+                msg=body,
+                digestmod=hashlib.sha256
+            ).hexdigest()
+            
+            if not hmac.compare_digest(signature, expected_signature):
+                logger.error(f"Invalid signature for event {delivery_id}")
+                raise HTTPException(status_code=401, detail="Invalid signature")
+            
+            logger.debug(f"Webhook signature verified for event {delivery_id}")
+        else:
+            logger.warning("Webhook secret not configured - skipping signature verification")
+        
+        # Parse the event data
+        try:
+            event_data = json.loads(body)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse webhook payload for event {delivery_id}: {e}")
+            raise HTTPException(status_code=400, detail="Invalid JSON payload")
+        
+        # Validate event type
+        event_types = (config.integrations.github.webhook_events 
+                      if config.integrations and config.integrations.github 
+                      else ["pull_request", "pull_request_review"])
+                      
+        if event_type not in event_types:
+            logger.info(f"Ignoring unhandled event type: {event_type} (ID: {delivery_id})")
+            return {
+                "status": "ignored",
+                "reason": f"Event type {event_type} not configured for processing",
+                "delivery_id": delivery_id
+            }
+        
+        # Validate repository
+        if 'repository' in event_data:
+            repo_full_name = event_data['repository']['full_name']
+            if repo_full_name not in config.repository_list:
+                logger.info(f"Ignoring event from unmonitored repository: {repo_full_name} (ID: {delivery_id})")
+                return {
+                    "status": "ignored",
+                    "reason": f"Repository {repo_full_name} not in monitored list",
+                    "delivery_id": delivery_id
+                }
+            logger.info(f"Processing event for repository: {repo_full_name}")
+        
+        # Process the event
+        try:
+            await agent.handle_github_event(event_type, event_data)
+            logger.info(f"Successfully processed event {delivery_id}")
+            return {
+                "status": "processing",
+                "delivery_id": delivery_id,
+                "event_type": event_type,
+                "repository": event_data.get('repository', {}).get('full_name')
+            }
+        except Exception as e:
+            logger.error(f"Error processing event {delivery_id}: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error processing webhook: {str(e)}"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Unexpected error processing webhook", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 def main():
     """Main entry point."""

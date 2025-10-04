@@ -1,270 +1,402 @@
-# MCP Integration Guide
+# GitHub Integration Guide
 
 ## Overview
 
-The PR Reviewer Agent uses the Model Context Protocol (MCP) to interact with GitHub repositories and perform intelligent code reviews. MCP provides a standardized way to access repository content, monitor changes, and post review comments.
+The PR Reviewer Agent uses GitHub's REST API and webhook system to interact with repositories and perform intelligent code reviews. This integration enables real-time monitoring of pull requests, automated code analysis, and direct feedback through PR comments.
+
+## Integration Methods
+
+### 1. GitHub REST API
+- Direct access to repository content
+- Pull request management
+- Comment and review submissions
+- Repository and user information
+
+### 2. Webhooks
+- Real-time event notifications
+- Secure payload delivery
+- Event filtering
+- Automatic retries
 
 ## Configuration
 
 ### Environment Variables
 
 ```env
-# MCP Configuration
-MCP_ENDPOINT=https://mcp.github.dev/v1
-MCP_TOKEN=your_mcp_token_here
-MONITORED_REPOSITORIES=owner1/repo1,owner2/repo2
+# GitHub Configuration
+GITHUB_TOKEN=your_personal_access_token
+GITHUB_WEBHOOK_SECRET=your_webhook_secret
+REPOSITORY_LIST=owner1/repo1,owner2/repo2
+
+# Application Settings
+ENVIRONMENT=development
+LOG_LEVEL=INFO
 ```
 
 ### Configuration File (settings.yaml)
 
 ```yaml
-mcp:
-  endpoint: ${MCP_ENDPOINT}
-  token: ${MCP_TOKEN}
-  repositories:
-    - owner1/repo1
-    - owner2/repo2
-  review:
-    batch_size: 10
-    max_concurrent: 5
+github:
+  api_version: "2022-11-28"
+  webhook_events:
+    - pull_request
+    - pull_request_review
+  max_comments_per_review: 50
+  retry_config:
+    max_attempts: 3
+    initial_delay: 1
+    max_delay: 60
+
+integrations:
+  github:
+    webhook_secret: ${GITHUB_WEBHOOK_SECRET}
+    webhook_events:
+      - pull_request
+      - pull_request_review
+    repositories: ${REPOSITORY_LIST}
+
+agent:
+  concurrent_reviews: 5
+  review_timeout: 300
+  max_files_per_review: 100
 ```
 
-## MCP Features
+## Integration Features
 
-### 1. PR Monitoring
+### 1. Webhook Integration
 
-The agent uses MCP to monitor repositories for new pull requests:
+The agent receives real-time notifications through GitHub webhooks:
 
 ```python
-# Example of PR monitoring through MCP
-async def monitor_prs():
-    client = MCPClient(endpoint, token)
-    prs = await client.get_pending_reviews(repositories)
-    for pr in prs:
-        await process_pr(pr)
+@app.post("/webhook")
+async def github_webhook(request: Request):
+    """Handle GitHub webhook events."""
+    try:
+        # Verify webhook signature
+        body = await request.body()
+        signature = request.headers.get("X-Hub-Signature-256")
+        verify_webhook_signature(signature, body, webhook_secret)
+        
+        # Process the event
+        event_type = request.headers.get("X-GitHub-Event")
+        event_data = json.loads(body)
+        await process_github_event(event_type, event_data)
+        
+        return {"status": "processing"}
+    except Exception as e:
+        logger.error(f"Webhook processing error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 ```
 
-### 2. Code Analysis
+### 2. GitHub API Integration
 
-MCP provides various code analysis capabilities:
-
-- **Architecture Analysis**
-  ```python
-  # Validate architecture through MCP
-  result = await mcp_client.validate_architecture(
-      file_path="src/controller/UserController.java",
-      rules=architecture_rules
-  )
-  ```
-
-- **Context Analysis**
-  ```python
-  # Get file context
-  context = await mcp_client.get_file_context(
-      file_path="src/model/User.java",
-      repository="owner/repo"
-  )
-  ```
-
-### 3. Review Management
-
-MCP handles the review lifecycle:
+The agent uses GitHub's REST API for repository interactions:
 
 ```python
-# Post review through MCP
-await mcp_client.post_review(
-    repository="owner/repo",
-    pr_number=123,
-    review_result=result
-)
+class GitHubClient:
+    """GitHub API client with retry and rate limit handling."""
+    
+    async def get_pull_request(self, repo: str, pr_number: int) -> dict:
+        """Get PR details with automatic retry and rate limit handling."""
+        url = f"{self.base_url}/repos/{repo}/pulls/{pr_number}"
+        return await self._make_request("GET", url)
+    
+    async def post_review_comment(self, repo: str, pr_number: int, 
+                                comment: str, path: str = None, 
+                                line: int = None) -> dict:
+        """Post a review comment with file location context."""
+        url = f"{self.base_url}/repos/{repo}/pulls/{pr_number}/reviews"
+        body = {
+            "body": comment,
+            "event": "COMMENT",
+            "comments": [{"path": path, "line": line, "body": comment}]
+                if path and line else []
+        }
+        return await self._make_request("POST", url, json=body)
 ```
 
-## Working with MCP
+### 3. Event Processing Pipeline
 
-### 1. Setting Up MCP
+The agent processes GitHub events through an analysis pipeline:
 
-1. Obtain MCP credentials:
+```python
+class PRReviewerAgent:
+    """Core agent for processing PR events and coordinating analysis."""
+    
+    async def handle_github_event(self, event_type: str, 
+                                event_data: dict) -> None:
+        """Process GitHub webhook events."""
+        if event_type == "pull_request":
+            await self.process_pull_request(event_data)
+        elif event_type == "pull_request_review":
+            await self.process_review_feedback(event_data)
+    
+    async def process_pull_request(self, event_data: dict) -> None:
+        """Analyze PR and provide feedback."""
+        # Extract PR details
+        pr_number = event_data["pull_request"]["number"]
+        repo = event_data["repository"]["full_name"]
+        
+        # Run analysis pipeline
+        analysis_results = await self.analyze_pr(repo, pr_number)
+        
+        # Post review comments
+        await self.post_review(repo, pr_number, analysis_results)
+```
+
+## Setup and Configuration
+
+### 1. GitHub Setup
+
+1. Create Personal Access Token:
+   - Go to GitHub Settings > Developer settings > Personal access tokens
+   - Generate new token with required scopes:
+     - `repo` (full control of private repositories)
+     - `workflow` (if using GitHub Actions)
+
+2. Configure Webhook:
    ```bash
-   # Request MCP access
-   gh mcp auth login
+   # Start the tunnel for local development
+   python scripts/setup_tunnel.py
+
+   # Follow the printed instructions to:
+   # 1. Copy the webhook URL
+   # 2. Configure in GitHub repository settings
+   # 3. Set the webhook secret
+   # 4. Select events to monitor
+   ```
+
+### 2. Local Development Setup
+
+1. Configure environment:
+   ```bash
+   # Create and populate .env file
+   cp example.env .env
    
-   # Get MCP token
-   gh mcp token create
+   # Add your GitHub token and webhook secret
+   echo "GITHUB_TOKEN=your_token_here" >> .env
+   echo "GITHUB_WEBHOOK_SECRET=your_secret_here" >> .env
    ```
 
-2. Configure environment:
+2. Start the application:
    ```bash
-   # Set MCP environment variables
-   export MCP_ENDPOINT="https://mcp.github.dev/v1"
-   export MCP_TOKEN="your_token_here"
+   # Start the FastAPI server
+   python src/main.py
    ```
 
-### 2. Repository Setup
+### 3. Using the GitHub Client
 
-1. Enable MCP for repositories:
-   ```bash
-   gh mcp repo enable owner/repo
-   ```
-
-2. Configure webhook (if needed):
-   ```bash
-   gh mcp webhook create owner/repo
-   ```
-
-### 3. Using MCP Client
-
-The agent provides an `MCPClient` class for MCP interactions:
+The agent provides a `GitHubClient` class for API interactions:
 
 ```python
-from utils.mcp import MCPClient
+from utils.github import GitHubClient
 
 # Initialize client
-client = MCPClient(
-    base_url=config.mcp_endpoint,
-    auth_token=config.mcp_token
+client = GitHubClient(
+    token=config.github_token,
+    base_url="https://api.github.com"
 )
 
-# Use MCP features
-await client.analyze_pull_request(pr_context)
-await client.get_file_context(file_path, repository)
-await client.validate_architecture(file_path, content, rules)
+# Use GitHub API features
+await client.get_pull_request(repo, pr_number)
+await client.get_pr_files(repo, pr_number)
+await client.post_review(repo, pr_number, comments)
 ```
 
-## MCP Response Handling
+## GitHub API Integration
 
-### 1. Analysis Results
+### 1. Webhook Event Processing
 
-MCP returns analysis results in a standard format:
+The agent receives and processes GitHub webhook events:
 
 ```json
 {
+  "event": "pull_request",
+  "action": "opened",
+  "pull_request": {
+    "number": 123,
+    "title": "Feature: Add new security checks",
+    "body": "Implements additional security analysis...",
+    "head": {
+      "ref": "feature/security-updates",
+      "sha": "abc123..."
+    }
+  },
+  "repository": {
+    "full_name": "owner/repo"
+  }
+}
+```
+
+### 2. PR Analysis Pipeline
+
+The analysis results are structured as:
+
+```json
+{
+  "summary": {
+    "total_files": 5,
+    "issues_found": 3,
+    "analysis_duration": 2.5
+  },
   "issues": [
     {
-      "severity": "error",
-      "message": "Direct database access in controller",
-      "file": "src/controller/UserController.java",
+      "severity": "high",
+      "category": "security",
+      "message": "SQL injection vulnerability detected",
+      "file": "src/handlers/user.py",
       "line": 45,
-      "rule": "architecture.layer_violation"
+      "recommendation": "Use parameterized queries"
     }
   ]
 }
 ```
 
-### 2. File Context
+## Error Handling and Recovery
 
-MCP provides rich context for files:
+### 1. GitHub API Errors
 
-```json
-{
-  "language": "java",
-  "imports": ["java.util.*", "org.springframework.*"],
-  "classes": ["UserController"],
-  "methods": ["getUser", "createUser"],
-  "dependencies": ["Repository", "Service"]
-}
-```
-
-## Error Handling
-
-### 1. MCP Errors
-
-Handle common MCP errors:
+Handle common API errors:
 
 ```python
-try:
-    result = await mcp_client.analyze_pull_request(pr)
-except MCPConnectionError:
-    # Handle connection issues
-    logger.error("MCP connection failed")
-except MCPAuthenticationError:
-    # Handle auth issues
-    logger.error("MCP authentication failed")
-except MCPRateLimitError:
-    # Handle rate limiting
-    await asyncio.sleep(retry_after)
+class GitHubClient:
+    async def _make_request(self, method: str, url: str, **kwargs) -> dict:
+        """Make GitHub API request with retry and error handling."""
+        for attempt in range(self.max_retries):
+            try:
+                async with self.session.request(method, url, **kwargs) as resp:
+                    if resp.status == 429:  # Rate limit
+                        reset_time = int(resp.headers['X-RateLimit-Reset'])
+                        await self._handle_rate_limit(reset_time)
+                        continue
+                        
+                    resp.raise_for_status()
+                    return await resp.json()
+                    
+            except aiohttp.ClientError as e:
+                if attempt == self.max_retries - 1:
+                    raise GitHubAPIError(f"API request failed: {e}")
+                await asyncio.sleep(self._get_retry_delay(attempt))
 ```
 
-### 2. Recovery Strategies
+### 2. Webhook Processing
 
-1. **Connection Issues**:
-   ```python
-   # Implement exponential backoff
-   retry_count = 0
-   while retry_count < max_retries:
-       try:
-           return await mcp_client.analyze_pull_request(pr)
-       except MCPConnectionError:
-           await exponential_backoff(retry_count)
-           retry_count += 1
-   ```
+Robust webhook handling:
 
-2. **Rate Limiting**:
-   ```python
-   # Implement rate limit handling
-   if isinstance(error, MCPRateLimitError):
-       await asyncio.sleep(error.retry_after)
-       return await mcp_client.analyze_pull_request(pr)
-   ```
+```python
+async def process_github_event(event_type: str, event_data: dict) -> None:
+    """Process GitHub webhook events with error handling."""
+    try:
+        # Validate event data
+        if not self._validate_event_data(event_type, event_data):
+            logger.error(f"Invalid event data for type: {event_type}")
+            return
+
+        # Process based on event type
+        handlers = {
+            "pull_request": self._handle_pr_event,
+            "pull_request_review": self._handle_review_event
+        }
+        
+        handler = handlers.get(event_type)
+        if handler:
+            await handler(event_data)
+        else:
+            logger.warning(f"Unhandled event type: {event_type}")
+            
+    except Exception as e:
+        logger.error(f"Event processing error: {e}", exc_info=True)
+        # Could implement retry logic here if needed
+```
 
 ## Best Practices
 
-1. **Error Handling**
-   - Always implement proper error handling
-   - Use exponential backoff for retries
-   - Handle rate limits appropriately
+### 1. API Usage
+- Use conditional requests with ETags
+- Implement rate limit monitoring
+- Cache responses when appropriate
+- Use GraphQL for complex queries
 
-2. **Performance**
-   - Batch PR analysis when possible
-   - Cache file context information
-   - Use concurrent processing wisely
+### 2. Webhook Management
+- Verify all webhook signatures
+- Process events asynchronously
+- Implement retry mechanisms
+- Monitor webhook deliveries
 
-3. **Monitoring**
-   - Log MCP interactions
-   - Track error rates
-   - Monitor response times
+### 3. Security
+- Rotate webhook secrets regularly
+- Use minimal token scopes
+- Validate repository access
+- Secure token storage
 
-4. **Security**
-   - Secure MCP tokens
-   - Validate webhook payloads
-   - Use HTTPS endpoints
+### 4. Performance
+- Batch API requests when possible
+- Implement response caching
+- Use concurrent processing
+- Monitor API usage
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Authentication Failed**
-   - Check MCP token validity
+1. **API Rate Limits**
+   - Monitor rate limit headers
+   - Implement rate limit handling
+   - Use conditional requests
+   - Consider using GraphQL
+
+2. **Webhook Delivery**
+   - Check webhook configuration
+   - Verify signature verification
+   - Monitor delivery attempts
+   - Check request payload
+
+3. **Authentication**
    - Verify token permissions
-   - Ensure token is properly configured
+   - Check token expiration
+   - Validate repository access
+   - Monitor auth errors
 
-2. **Rate Limiting**
-   - Implement proper rate limiting handling
-   - Use batch processing when possible
-   - Monitor API usage
-
-3. **Webhook Issues**
-   - Verify webhook configuration
-   - Check webhook secrets
-   - Monitor webhook delivery
-
-### Debugging
+### Debugging Tools
 
 1. Enable debug logging:
    ```python
-   # Enable MCP debug logging
-   logging.getLogger('mcp').setLevel(logging.DEBUG)
+   # Set log level to DEBUG
+   LOG_LEVEL=DEBUG
+   
+   # Add detailed request logging
+   logging.getLogger('aiohttp.client').setLevel(logging.DEBUG)
    ```
 
-2. Monitor MCP interactions:
+2. Monitor GitHub API usage:
    ```python
-   # Track MCP requests
-   await mcp_client.analyze_pull_request(pr, debug=True)
+   # Check rate limit status
+   curl -H "Authorization: token $GITHUB_TOKEN" \
+        https://api.github.com/rate_limit
    ```
 
-## Support
+3. Webhook testing:
+   ```bash
+   # Test webhook endpoint
+   curl -X POST http://localhost:8000/webhook \
+        -H "X-GitHub-Event: pull_request" \
+        -H "X-Hub-Signature-256: sha256=..." \
+        -d @test_payload.json
+   ```
 
-For MCP-related issues:
-1. Check MCP status page
-2. Review MCP documentation
-3. Contact GitHub support
-4. Check issue tracker
+## Support and Resources
+
+1. **Documentation**
+   - [GitHub REST API](https://docs.github.com/en/rest)
+   - [Webhooks Guide](https://docs.github.com/en/webhooks)
+   - [Authentication](https://docs.github.com/en/authentication)
+
+2. **Tools**
+   - GitHub API status: https://www.githubstatus.com/
+   - API Explorer: https://docs.github.com/en/rest/overview/endpoints-available-for-github-apps
+   - Webhook Tester: https://webhook.site/
+
+3. **Community**
+   - GitHub Community Forum
+   - Stack Overflow with [github-api] tag
+   - Project Issue Tracker

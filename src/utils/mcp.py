@@ -152,24 +152,40 @@ class MCPClient:
             PRContext object with detailed PR information
         """
         async with aiohttp.ClientSession(headers=self.headers) as session:
-            url = f"{self.base_url}/pr/{pr_info['repository']}/{pr_info['number']}/context"
-            
-            async with session.get(url) as response:
+            # Get PR details
+            pr_url = f"{self.github_api_url}/repos/{pr_info['repository']}/pulls/{pr_info['number']}"
+            async with session.get(pr_url) as response:
                 if response.status != 200:
-                    raise Exception(f"Failed to get PR context: {await response.text()}")
-                
-                result = await response.json()
-                return PRContext(
-                    pr_number=result["number"],
-                    repository=result["repository"],
-                    base_branch=result["base_branch"],
-                    head_branch=result["head_branch"],
-                    files_changed=result["files_changed"],
-                    diff_content=result["diff_content"],
-                    author=result["author"],
-                    title=result["title"],
-                    description=result.get("description")
-                )
+                    raise Exception(f"Failed to get PR details: {await response.text()}")
+                pr_data = await response.json()
+
+            # Get PR files
+            files_url = f"{pr_url}/files"
+            async with session.get(files_url) as response:
+                if response.status != 200:
+                    raise Exception(f"Failed to get PR files: {await response.text()}")
+                files_data = await response.json()
+
+            # Build diff content
+            diff_content = ""
+            files_changed = []
+            for file in files_data:
+                files_changed.append(file['filename'])
+                if file.get('patch'):
+                    diff_content += f"diff --git a/{file['filename']} b/{file['filename']}\n"
+                    diff_content += file['patch'] + "\n"
+
+            return PRContext(
+                pr_number=pr_data["number"],
+                repository=pr_info["repository"],
+                base_branch=pr_data["base"]["ref"],
+                head_branch=pr_data["head"]["ref"],
+                files_changed=files_changed,
+                diff_content=diff_content,
+                author=pr_data["user"]["login"],
+                title=pr_data["title"],
+                description=pr_data.get("body", "")
+            )
 
     async def post_review(self, repository: str, pr_number: int, review_result: Any) -> None:
         """Post a review to a pull request.
